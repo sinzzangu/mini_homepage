@@ -1,0 +1,14 @@
+# 도메인 2개를 그대로 Django로 넘긴다. rewrite를 쓰지 않는 게 중요하다 —
+# Django가 Host를 보고 URLconf를 고르기 때문에(HostBasedURLConfMiddleware),
+# Caddy에서 /cal 프리픽스를 붙이면 로그인 리다이렉트 경로가 깨진다.
+#
+# 인증은 Django가 담당한다. basic_auth를 앞에 두면 사용자별 식별이 불가능하고
+# ICS 피드(구독 fetcher가 로그인을 못 함)도 막혀버린다.
+
+example.com {
+	reverse_proxy web:8000
+}
+
+cal.example.com {
+	reverse_proxy web:8000
+}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 · dodamthepig</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee;
+         display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 1rem; }
+  .card { background: #16213e; padding: 2rem; border-radius: 12px; width: min(360px, 100%);
+          box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  h1 { font-size: 1.3rem; margin: 0 0 1.25rem; }
+  label { display: block; font-size: .85rem; color: #9ca3af; margin-bottom: .3rem; }
+  input[type=text], input[type=password] {
+    width: 100%; box-sizing: border-box; padding: .6rem .7rem; margin-bottom: 1rem;
+    background: #1a1a2e; border: 1px solid #2c3358; border-radius: 6px; color: #eee;
+    font-size: 1rem; }
+  button { width: 100%; padding: .7rem; border: 0; border-radius: 6px; background: #7c5cff;
+           color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:hover { background: #6a4bf0; }
+  .errors { background: #7f1d1d; color: #fee2e2; padding: .6rem .8rem; border-radius: 6px;
+            font-size: .85rem; margin-bottom: 1rem; }
+  .errors ul { margin: 0; padding-left: 1.1rem; }
+  .alt { margin: 1rem 0 0; text-align: center; font-size: .85rem; color: #9ca3af; }
+  .alt a { color: #a78bfa; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🐷 캘린더 로그인</h1>
+  {% if form.errors %}
+    <div class="errors">아이디 또는 비밀번호가 맞지 않습니다.</div>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <label for="id_username">아이디</label>
+    <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
+    <label for="id_password">비밀번호</label>
+    <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+    <button type="submit">로그인</button>
+  </form>
+  <p class="alt">계정이 없으면 <a href="{% url 'signup' %}">회원가입</a></p>
+</div>
+</body>
+</html>

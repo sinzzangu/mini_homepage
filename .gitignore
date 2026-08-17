@@ -1,0 +1,9 @@
+# 비밀정보 — 절대 커밋 금지
+.env
+.env.*
+!.env.example
+
+# 빌드 산출물 (collectstatic은 이미지 빌드 때 실행된다)
+staticfiles/
+__pycache__/
+*.py[cod]
