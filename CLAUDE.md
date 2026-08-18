@@ -50,7 +50,8 @@
   사용자당 5개 제한(`MAX_SOURCES_PER_USER`)
   - `url`이 `URLField`가 아닌 이유: 기본 URLValidator가 `webcal://`을 먼저 거부해서
     아이클라우드 링크를 붙여넣을 수 없다. 검증은 `normalize_url`이 한다
-- `FeedToken` — 사용자별 구독 토큰(64자 hex). 여러 개 발급·개별 폐기 가능
+- `FeedToken` — 사용자별 구독 토큰(64자 hex). 여러 개 발급·개별 폐기 가능.
+  폐기 토큰은 최근 5개만 남기고 정리된다(무제한 누적 시 설정 페이지가 worker를 죽인다)
   - 피드는 `source="local"`만 내보낸다. 가져온 일정을 되돌려 내보내면 구독 루프가 생긴다
 
 ## `calendars/ics_fetch.py` — SSRF 방어가 이 파일의 존재 이유다
@@ -76,6 +77,17 @@
 - `collectstatic`은 이미지 빌드 때 돌아간다. settings를 임포트할 수 있어야 하므로
   Dockerfile에서 더미 env를 넣어 실행한다
 - 반복 일정(RRULE)은 아직 펼치지 않는다. 원본 1건만 들어오고 sync 로그에 개수가 남는다
+
+## 사용자 설정 화면 (`/settings/`)
+
+일반 사용자가 admin 없이 스스로 하는 곳. `calendars/views.py`의 `settings_page`.
+
+- 자기 피드 주소 확인·재발급·폐기 (재발급은 시간당 10회 제한)
+- 외부 ICS 소스 등록·삭제·동기화 토글 (사용자당 5개, `select_for_update`로 경쟁 방지)
+- **`@never_cache` 필수** — 본문에 피드 토큰이 들어가는 유일한 페이지다
+- 소스 URL은 목록에서 마스킹한다(구글 비공개 주소는 비밀번호급)
+- 등록 시점 검증은 https·호스트명까지만이고 **사설 IP 차단은 fetch 시점**에 걸린다.
+  즉 `https://10.0.0.1/a.ics`는 등록되지만 sync에서 거부되고 백오프된다
 
 ## 명령
 

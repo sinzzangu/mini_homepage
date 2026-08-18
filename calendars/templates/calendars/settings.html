@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설정 · dodamthepig</title>
+<style>
+  /* padding이 폭에 더해져 가로 스크롤이 생기지 않게 전부 border-box로 */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { max-width: 100%; }
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee;
+         margin: 0; padding: 1rem; line-height: 1.5; }
+  .wrap { width: min(760px, 100%); margin: 0 auto; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+         margin-bottom: 1.25rem; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+  .card { background: #16213e; padding: 1.5rem; border-radius: 12px; margin-bottom: 1.25rem;
+          box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .back { color: #a78bfa; font-size: .85rem; display: inline-block; padding: .4rem .3rem; }
+  label { display: block; font-size: .85rem; color: #9ca3af; margin-bottom: .3rem; }
+  input[type=text] { width: 100%; padding: .6rem .7rem; min-height: 44px; background: #1a1a2e;
+                     border: 1px solid #2c3358; border-radius: 6px; color: #eee; font-size: 1rem; }
+  input[type=color] { width: 3.2rem; height: 44px; padding: .2rem; background: #1a1a2e;
+                      border: 1px solid #2c3358; border-radius: 6px; }
+  button { min-height: 44px; padding: .55rem 1rem; border: 0; border-radius: 6px;
+           background: #7c5cff; color: #fff; font-size: .9rem; font-weight: 600; cursor: pointer; }
+  button:hover { background: #6a4bf0; }
+  button.ghost { background: #242b4d; color: #c7cbe0; }
+  button.ghost:hover { background: #2d3559; }
+  button.danger { background: #4c1d24; color: #fecdd3; }
+  button.danger:hover { background: #66242e; }
+  .help { font-size: .78rem; color: #6b7280; margin: .4rem 0 0; }
+  .warn { background: #4a2c0b; color: #fde68a; padding: .6rem .8rem; border-radius: 6px;
+          font-size: .82rem; margin: 0 0 1rem; }
+  .errors { background: #7f1d1d; color: #fee2e2; padding: .6rem .8rem; border-radius: 6px;
+            font-size: .85rem; margin-bottom: 1rem; }
+  .errors ul { margin: 0; padding-left: 1.1rem; }
+  .flash { background: #14342c; color: #a7f3d0; padding: .6rem .8rem; border-radius: 6px;
+           font-size: .85rem; margin-bottom: 1rem; }
+  .row { border: 1px solid #2c3358; border-radius: 8px; padding: .85rem; margin-bottom: .75rem;
+         background: #131c33; }
+  .row-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .row-title { font-weight: 600; font-size: .95rem; }
+  .dot { width: .8rem; height: .8rem; border-radius: 50%; flex: none; }
+  .meta { font-size: .75rem; color: #6b7280; margin: .35rem 0 0; word-break: break-all; }
+  .meta b { color: #9ca3af; font-weight: 600; }
+  /* 토큰 URL은 길어서 가로 스크롤을 자기 안에서 처리한다 */
+  .feed-url { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+  .feed-url input { flex: 1 1 14rem; font-family: ui-monospace, monospace; font-size: .78rem; }
+  .actions { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+  .actions form { margin: 0; }
+  .badge { font-size: .7rem; padding: .15rem .45rem; border-radius: 999px; background: #242b4d;
+           color: #c7cbe0; }
+  .badge.off { background: #3a2230; color: #fca5a5; }
+  .badge.bad { background: #4c1d24; color: #fecdd3; }
+  .empty { font-size: .85rem; color: #6b7280; margin: 0; }
+  .add-grid { display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap; }
+  .add-grid .grow { flex: 1 1 12rem; }
+  hr { border: 0; border-top: 1px solid #2c3358; margin: 1.25rem 0; }
+  @media (max-width: 480px) {
+    body { padding: .75rem; }
+    .card { padding: 1.15rem; border-radius: 10px; }
+    h1 { font-size: 1.15rem; }
+    button { width: 100%; }
+    .actions form, .add-grid .grow { flex: 1 1 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>⚙️ 설정</h1>
+    <a class="back" href="{% url 'calendar' %}">← 캘린더로</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="{% if message.tags == 'success' %}flash{% else %}errors{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card">
+    <h2>📡 내 피드 주소</h2>
+    <p class="warn">
+      <b>이 주소가 곧 비밀번호입니다.</b> 주소를 아는 사람은 누구나 로그인 없이 내 일정을
+      전부 볼 수 있습니다. 캡처나 메신저로 공유하지 말고, 새어 나갔다고 생각되면 아래에서
+      재발급하세요.
+    </p>
+
+    {% for token in active_tokens %}
+      <div class="row">
+        <div class="row-head">
+          <span class="row-title">{{ token.label|default:"무제" }}</span>
+          <span class="badge">{{ token.created_at|date:"Y-m-d" }} 발급</span>
+        </div>
+        <div class="feed-url">
+          <input type="text" readonly value="{{ token.url }}" id="feed-{{ token.id }}"
+                 aria-label="{{ token.label|default:'무제' }} 피드 주소"
+                 onclick="this.select()">
+          <button type="button" class="ghost" data-copy="feed-{{ token.id }}">복사</button>
+        </div>
+        <div class="actions">
+          <form method="post" data-confirm="이 주소를 폐기하면 이 주소로 구독 중인 앱에서 일정이 더 이상 갱신되지 않습니다. 폐기할까요?">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="token-revoke">
+            <input type="hidden" name="id" value="{{ token.id }}">
+            <button type="submit" class="danger">폐기</button>
+          </form>
+        </div>
+      </div>
+    {% empty %}
+      <p class="empty">활성 주소가 없습니다. 아래에서 새로 발급하세요.</p>
+    {% endfor %}
+
+    <hr>
+    <form method="post" data-confirm="지금 쓰는 모든 피드 주소가 폐기되고 새 주소가 만들어집니다. 계속할까요?">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="token-rotate">
+      <label for="token-label">새 주소 이름 (선택)</label>
+      <div class="add-grid">
+        <div class="grow">
+          <input type="text" name="label" id="token-label" maxlength="50" placeholder="예: 아이폰">
+        </div>
+        <button type="submit">재발급</button>
+      </div>
+      <p class="help">재발급하면 기존 활성 주소는 모두 폐기됩니다. 구독 중인 앱에 새 주소를 다시 넣어야 합니다.</p>
+    </form>
+
+    {% if revoked_count %}
+      <p class="help">폐기된 주소 {{ revoked_count }}개 — 더 이상 동작하지 않습니다.
+        (오래된 폐기 기록은 자동으로 지워집니다.)</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>🔗 외부 캘린더 소스</h2>
+    <p class="help" style="margin-top:0">
+      구글·아이클라우드의 비공개 ICS 주소를 등록하면 15분마다 가져와 내 캘린더에 함께 보여줍니다.
+      가져온 일정은 여기서 수정할 수 없고, 내 피드로 다시 나가지도 않습니다.
+      동기화를 끄면 그 소스에서 가져온 일정도 캘린더에서 지워집니다(다시 켜면 복원됩니다).
+      최대 {{ source_limit }}개까지 등록할 수 있습니다.
+    </p>
+
+    {% for source in sources %}
+      <div class="row">
+        <div class="row-head">
+          <span class="dot" style="background: {{ source.color }}"></span>
+          <span class="row-title">{{ source.name }}</span>
+          {% if source.is_active %}
+            <span class="badge">동기화 켜짐</span>
+          {% else %}
+            <span class="badge off">꺼짐</span>
+          {% endif %}
+          {% if source.failure_count %}
+            <span class="badge bad">연속 실패 {{ source.failure_count }}회</span>
+          {% endif %}
+        </div>
+        <p class="meta">
+          <b>주소</b> {{ source.masked_url }} (뒷부분은 가려져 있습니다)<br>
+          <b>마지막 동기화</b>
+          {% if source.last_synced_at %}{{ source.last_synced_at|date:"Y-m-d H:i" }}{% else %}아직 없음{% endif %}<br>
+          <b>상태</b> {{ source.last_status|default:"아직 시도하지 않았습니다." }}
+        </p>
+        {% if not source.is_active %}
+          <p class="help">동기화가 꺼져 있어 이 소스에서 가져온 일정은 캘린더에 없습니다.
+            다시 켜면 다음 동기화(15분 주기)에 돌아옵니다.</p>
+        {% endif %}
+        <div class="actions">
+          <form method="post"{% if source.is_active %} data-confirm="동기화를 끄면 '{{ source.name }}'에서 가져온 일정이 캘린더에서 지워집니다(다시 켜면 복원됩니다). 계속할까요?"{% endif %}>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="source-toggle">
+            <input type="hidden" name="id" value="{{ source.id }}">
+            <button type="submit" class="ghost">{% if source.is_active %}동기화 끄기{% else %}동기화 켜기{% endif %}</button>
+          </form>
+          <form method="post" data-confirm="'{{ source.name }}'과 이 소스에서 가져온 일정이 모두 삭제됩니다. 계속할까요?">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="source-delete">
+            <input type="hidden" name="id" value="{{ source.id }}">
+            <button type="submit" class="danger">삭제</button>
+          </form>
+        </div>
+      </div>
+    {% empty %}
+      <p class="empty">등록된 소스가 없습니다.</p>
+    {% endfor %}
+
+    <hr>
+    <h2>소스 추가</h2>
+    {% if source_form.errors %}
+      <div class="errors">
+        <ul>
+          {% for error in source_form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+          {% for field in source_form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if source_slots_left > 0 %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="source-add">
+        <div class="add-grid">
+          <div class="grow">
+            <label for="{{ source_form.name.id_for_label }}">이름</label>
+            {{ source_form.name }}
+          </div>
+          <div>
+            <label for="{{ source_form.color.id_for_label }}">색</label>
+            {{ source_form.color }}
+          </div>
+        </div>
+        <div style="margin-top:.6rem">
+          <label for="{{ source_form.url.id_for_label }}">ICS 주소</label>
+          {{ source_form.url }}
+          <p class="help">
+            https:// 또는 webcal:// 주소만 됩니다(webcal은 자동으로 https로 바뀝니다).
+            이 주소도 비밀번호급이라 등록 후에는 호스트까지만 보여 줍니다.
+          </p>
+        </div>
+        <div class="actions">
+          <button type="submit">추가 (남은 자리 {{ source_slots_left }}개)</button>
+        </div>
+      </form>
+    {% else %}
+      <p class="empty">소스를 {{ source_limit }}개까지 등록했습니다. 새로 추가하려면 기존 소스를 삭제하세요.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  // 복사 버튼 — HTTPS에서만 clipboard API가 동작하므로 실패 시 선택으로 대체한다.
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var input = document.getElementById(button.dataset.copy);
+      if (!input) return;
+      var done = function () {
+        var old = button.textContent;
+        button.textContent = "복사됨";
+        setTimeout(function () { button.textContent = old; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(done, function () {
+          input.select();
+        });
+      } else {
+        input.select();
+        try { document.execCommand("copy"); done(); } catch (e) { /* 수동 복사로 */ }
+      }
+    });
+  });
+
+  // 되돌릴 수 없는 동작은 한 번 확인한다.
+  document.querySelectorAll("form[data-confirm]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+    });
+  });
+</script>
+</body>
+</html>

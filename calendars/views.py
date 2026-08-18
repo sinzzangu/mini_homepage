@@ -2,27 +2,40 @@ import hmac
 import json
 from datetime import datetime, time
 from functools import wraps
+from urllib.parse import urlencode, urlsplit
 
+from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import redirect, render
+from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 from icalendar import Calendar, Event as ICalEvent
 
-from .forms import SignupForm
-from .models import Event, FeedToken
+from .forms import CalendarSourceForm, SignupForm
+from .models import MAX_SOURCES_PER_USER, CalendarSource, Event, FeedToken
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # 공개 회원가입이라 IP당 시도를 제한한다. 캐시는 LocMemCache(worker 1개)로 충분.
 SIGNUP_MAX_ATTEMPTS = 5
 SIGNUP_WINDOW_SECONDS = 3600
+
+# 재발급이 폐기 토큰을 무한히 쌓으면 설정 페이지 조회만으로 1 GB 박스의 worker가
+# 죽는다. 그래서 (1) 사용자별 폐기 토큰은 최근 N개만 남기고 지우고,
+# (2) 재발급 자체도 사용자당 시간당 횟수를 제한한다.
+MAX_REVOKED_TOKENS_KEPT = 5
+TOKEN_ROTATE_MAX_ATTEMPTS = 10
+TOKEN_ROTATE_WINDOW_SECONDS = 3600
 
 
 def require_xhr_header(view):
@@ -167,6 +180,212 @@ def signup(request):
 
     return render(
         request, "calendars/signup.html", {"form": form, "throttled": throttled}
+    )
+
+
+def feed_url(request, token):
+    """구독용 절대 URL을 만든다.
+
+    reverse("feed")는 요청에 걸린 Host별 URLconf로 풀리므로 메인 도메인에서는
+    /cal/feed.ics, 캘린더 서브도메인에서는 /feed.ics가 나온다.
+    """
+    base = request.build_absolute_uri(reverse("feed"))
+    return f"{base}?{urlencode({'token': token})}"
+
+
+def mask_source_url(url):
+    """소스 URL도 비밀번호급이라 화면에는 호스트까지만 보여준다.
+
+    비밀은 경로·쿼리에 들어 있고(구글의 비공개 주소, 아이클라우드 토큰),
+    호스트는 어느 서비스에서 가져오는 소스인지 구분하는 데만 필요하다.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or "?"
+    if parts.query or parts.path not in ("", "/"):
+        return f"{host}/…"
+    return host
+
+
+def posted_id(request, field="id"):
+    """POST로 온 pk를 정수로. 이상한 값은 남의 것과 똑같이 404로 막는다."""
+    try:
+        return int(request.POST.get(field, ""))
+    except (TypeError, ValueError) as exc:
+        raise Http404("잘못된 id입니다.") from exc
+
+
+def prune_revoked_tokens(user):
+    """폐기 토큰은 최근 MAX_REVOKED_TOKENS_KEPT개만 남기고 지운다.
+
+    폐기분은 되살릴 수 없고 화면에도 개수만 뜨므로 보관할 이유가 없다.
+    남겨 두면 재발급을 반복할 때 행이 무한히 쌓여 설정 페이지 조회가
+    worker(1개)를 압박한다. 지운 개수를 돌려준다.
+    """
+    revoked = FeedToken.objects.filter(user=user, is_active=False)
+    # created_at은 초 단위로 겹칠 수 있어 id로 tie-break한다.
+    keep_ids = list(
+        revoked.order_by("-created_at", "-id").values_list("id", flat=True)[
+            :MAX_REVOKED_TOKENS_KEPT
+        ]
+    )
+    removed, _ = revoked.exclude(id__in=keep_ids).delete()
+    return removed
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def settings_page(request):
+    """설정 화면 — 내 피드 주소 확인과 외부 캘린더 소스 관리.
+
+    쓰기는 모두 POST + CSRF 토큰(표준 폼 방식)이고, 조회·수정은 전부
+    request.user로 스코핑한다. 남의 토큰·소스 id를 넣으면 404다.
+    토큰 값은 화면에만 보여주고 메시지·로그에는 남기지 않는다.
+    이 HTML에는 피드 토큰 전문이 들어가므로 @never_cache로 브라우저
+    디스크 캐시에 남지 않게 한다.
+    """
+    source_form = None
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+
+        if action == "token-rotate":
+            # 재발급은 행을 만드는 동작이라 사용자당 횟수를 제한한다.
+            rotate_key = f"token-rotate:{request.user.pk}"
+            rotations = cache.get(rotate_key, 0)
+            if rotations >= TOKEN_ROTATE_MAX_ATTEMPTS:
+                messages.error(
+                    request,
+                    "재발급을 너무 자주 했습니다. 한 시간 뒤에 다시 시도해 주세요.",
+                )
+                return redirect("settings")
+            cache.set(rotate_key, rotations + 1, TOKEN_ROTATE_WINDOW_SECONDS)
+
+            label = (request.POST.get("label") or "").strip()[:50] or "기본"
+            with transaction.atomic():
+                # 재발급 = 기존 활성 토큰을 모두 끊고 새로 하나 만든다.
+                FeedToken.objects.filter(user=request.user, is_active=True).update(
+                    is_active=False
+                )
+                FeedToken.objects.create(user=request.user, label=label)
+                # 방금 늘어난 폐기분까지 포함해 오래된 것은 정리한다.
+                prune_revoked_tokens(request.user)
+            messages.success(
+                request,
+                "새 피드 주소를 발급했습니다. 기존 주소는 폐기됐으니 "
+                "구독 중인 앱에 새 주소를 다시 넣어 주세요.",
+            )
+            return redirect("settings")
+
+        if action == "token-revoke":
+            token = get_object_or_404(
+                FeedToken, pk=posted_id(request), user=request.user
+            )
+            label = token.label or "무제"
+            with transaction.atomic():
+                token.is_active = False
+                token.save(update_fields=["is_active"])
+                prune_revoked_tokens(request.user)
+            messages.success(request, f"'{label}' 주소를 폐기했습니다.")
+            return redirect("settings")
+
+        if action == "source-add":
+            # instance에 owner를 미리 채운다 — 모델 clean()의 5개 제한이
+            # owner를 봐야 동작한다.
+            source_form = CalendarSourceForm(
+                request.POST, instance=CalendarSource(owner=request.user)
+            )
+            # 5개 제한은 clean()의 count()로 검사하므로 threads=4에서 동시에 들어온
+            # POST 두 개가 둘 다 통과할 수 있다. 소유자 행을 잠가 같은 사용자의
+            # 소스 추가를 직렬화한다(검증과 INSERT가 한 트랜잭션 안이어야 한다).
+            with transaction.atomic():
+                get_user_model().objects.select_for_update().filter(
+                    pk=request.user.pk
+                ).first()
+                if source_form.is_valid():
+                    # ModelForm이 full_clean()을 거치므로 normalize_url(https 강제,
+                    # webcal 변환)과 개수 제한이 이미 적용된 상태다.
+                    source = source_form.save()
+                    messages.success(
+                        request,
+                        f"'{source.name}'을 추가했습니다. 다음 동기화(15분 주기)에 "
+                        "일정이 들어옵니다.",
+                    )
+                    return redirect("settings")
+            # 폼 오류는 리다이렉트하면 사라지므로 입력값을 채운 채로 다시 그린다.
+
+        elif action == "source-toggle":
+            source = get_object_or_404(
+                CalendarSource, pk=posted_id(request), owner=request.user
+            )
+            with transaction.atomic():
+                source.is_active = not source.is_active
+                source.save(update_fields=["is_active"])
+                if source.is_active:
+                    messages.success(
+                        request,
+                        f"'{source.name}' 동기화를 다시 켰습니다. 다음 동기화"
+                        "(15분 주기)에 일정이 다시 들어옵니다.",
+                    )
+                else:
+                    # 끄면 sync 대상에서 빠져 미러 청소가 다시 돌지 않는다. 그대로
+                    # 두면 가져온 일정이 영구히 남고 UI에서는 지울 수도 없으므로
+                    # (is_imported → PATCH/DELETE 403) 여기서 함께 지운다.
+                    # 다시 켜면 다음 sync에 복원된다.
+                    removed, _ = Event.objects.filter(
+                        calendar_source=source, owner=request.user
+                    ).delete()
+                    messages.success(
+                        request,
+                        f"'{source.name}' 동기화를 껐습니다. 이 소스에서 가져온 "
+                        f"일정 {removed}개도 함께 지웠습니다(다시 켜면 복원됩니다).",
+                    )
+            return redirect("settings")
+
+        elif action == "source-delete":
+            source = get_object_or_404(
+                CalendarSource, pk=posted_id(request), owner=request.user
+            )
+            name = source.name
+            # 이 소스에서 가져온 일정도 FK CASCADE로 함께 사라진다.
+            source.delete()
+            messages.success(
+                request, f"'{name}'과 그 소스에서 가져온 일정을 삭제했습니다."
+            )
+            return redirect("settings")
+
+        else:
+            raise Http404("알 수 없는 요청입니다.")
+
+    # 활성 토큰만 객체로 올린다. 폐기분은 개수만 필요하므로 count()로 센다
+    # (전부 파이썬 객체로 올리면 worker 1개짜리 서버에서 메모리가 위험하다).
+    active_tokens = FeedToken.objects.filter(user=request.user, is_active=True)
+    revoked_count = FeedToken.objects.filter(
+        user=request.user, is_active=False
+    ).count()
+    sources = list(CalendarSource.objects.filter(owner=request.user))
+    for source in sources:
+        source.masked_url = mask_source_url(source.url)
+
+    return render(
+        request,
+        "calendars/settings.html",
+        {
+            "active_tokens": [
+                {
+                    "id": token.id,
+                    "label": token.label,
+                    "created_at": token.created_at,
+                    "url": feed_url(request, token.token),
+                }
+                for token in active_tokens
+            ],
+            "revoked_count": revoked_count,
+            "sources": sources,
+            "source_form": source_form or CalendarSourceForm(),
+            "source_limit": MAX_SOURCES_PER_USER,
+            "source_slots_left": MAX_SOURCES_PER_USER - len(sources),
+        },
     )
 
 

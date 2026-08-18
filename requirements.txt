@@ -3,4 +3,6 @@ gunicorn>=23
 tzdata
 psycopg[binary]>=3.2
 icalendar>=6
+# 반복 일정(RRULE) 펼치기에 직접 쓴다. icalendar의 전이 의존성에 기대지 않는다.
+python-dateutil>=2.9
 whitenoise>=6.7

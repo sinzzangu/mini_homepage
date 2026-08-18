@@ -28,6 +28,12 @@
     --fc-button-active-bg-color: var(--accent);
     --fc-button-active-border-color: var(--accent);
   }
+  /* 가로 스크롤 방지 — 폭을 넘기는 요소가 생겨도 화면이 좌우로 밀리지 않게 한다.
+     overflow-x는 html에만 준다: body에 주면 body가 스크롤 컨테이너가 되어
+     FullCalendar의 sticky 날짜 헤더(height:'auto'일 때 켜진다)가 안 붙는다.
+     text-size-adjust는 아이폰 가로모드에서 글자가 임의로 커지는 것을 막는다. */
+  html { overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { max-width: 100%; }
   body {
     font-family: system-ui, sans-serif;
     background: var(--bg);
@@ -39,12 +45,22 @@
            max-width: 1100px; margin-inline: auto; flex-wrap: wrap; }
   h1 { font-size: 1.35rem; margin: 0; }
   header p { color: var(--muted); margin: 0; font-size: .85rem; }
+  /* 안내 문구는 입력 방식에 따라 하나만 보여준다 (기본은 마우스용) */
+  .hint-touch { display: none; }
+  @media (pointer: coarse) {
+    .hint-pointer { display: none; }
+    .hint-touch { display: block; }
+  }
   .who { margin-left: auto; display: flex; align-items: center; gap: .6rem;
          font-size: .85rem; color: var(--muted); }
   .who strong { color: var(--ink); font-weight: 600; }
-  .who button { background: none; border: 1px solid #2c3358; color: var(--muted);
+  /* 설정 링크는 로그아웃 버튼과 같은 규칙을 공유한다 — 헤더에서 둘의 시각적 무게를 맞춘다 */
+  .who button, .who .btn { background: none; border: 1px solid #2c3358; color: var(--muted);
                 padding: .3rem .7rem; border-radius: 6px; cursor: pointer; font-size: .8rem; }
-  .who button:hover { border-color: #3b4470; color: var(--ink); }
+  /* a 태그라 밑줄·줄바꿈·수직정렬만 버튼처럼 맞춰 준다 (line-height는 버튼과 같은 normal) */
+  .who .btn { display: inline-flex; align-items: center; justify-content: center;
+              text-decoration: none; white-space: nowrap; }
+  .who button:hover, .who .btn:hover { border-color: #3b4470; color: var(--ink); }
   #calendar { max-width: 1100px; margin: 0 auto; }
   .fc .fc-toolbar-title { font-size: 1.1rem; }
   .fc .fc-col-header-cell-cushion,
@@ -58,14 +74,60 @@
     background: #7f1d1d; color: #fee2e2; padding: .6rem .8rem; border-radius: 6px;
     font-size: .85rem;
   }
+  /* '+n개 더' 팝오버가 화면 밖으로 나가지 않게 */
+  .fc .fc-popover { max-width: calc(100vw - 1rem); }
+  .fc .fc-popover-body { max-height: 60vh; overflow-y: auto; }
+
+  /* ===== 좁은 화면(폰) 대응 =====
+     레이아웃과 터치 크기만 손댄다. API 호출·이벤트 처리 로직은 그대로다.
+     FullCalendar가 주입하는 스타일시트는 head의 첫 script 앞에 들어가므로
+     같은 특이도(.fc .foo)면 아래 규칙이 나중에 와서 이긴다. */
+  @media (max-width: 560px) {
+    body { padding: .75rem .5rem 1.5rem; }
+    header { gap: .4rem .6rem; margin-bottom: .6rem; }
+    h1 { font-size: 1.1rem; }
+    /* 안내 문구는 제목/사용자 줄 아래로 내려 한 줄을 다 쓴다 */
+    header p { order: 3; flex: 1 0 100%; font-size: .75rem; line-height: 1.4; }
+    .who { font-size: .78rem; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+    .who button, .who .btn { min-height: 40px; padding: .45rem .8rem; font-size: .78rem; }
+    #error { font-size: .8rem; }
+
+    /* 툴바: 제목을 윗줄로 올리고 버튼은 아랫줄에 좌우로 배치한다.
+       버튼이 한 줄에 다 들어가지 않아도 넘치지 않고 줄바꿈된다. */
+    .fc .fc-header-toolbar.fc-toolbar { flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+    .fc .fc-header-toolbar .fc-toolbar-chunk { display: flex; align-items: center;
+                                               flex: 0 0 auto; min-width: 0; }
+    .fc .fc-header-toolbar .fc-toolbar-chunk:nth-child(2) {
+      order: -1; flex: 1 0 100%; justify-content: center; }
+    .fc .fc-toolbar-title { font-size: 1rem; }
+    .fc .fc-toolbar > * > :not(:first-child) { margin-left: .4em; }
+    /* 터치 대상 최소 44px */
+    .fc .fc-button { min-height: 44px; min-width: 44px; padding: .35rem .55rem;
+                     font-size: .85rem; line-height: 1.2; }
+
+    .fc { font-size: .85rem; }
+    .fc .fc-col-header-cell-cushion { padding: .35rem .1rem; font-size: .78rem; }
+    .fc .fc-daygrid-day-number { padding: .2rem .3rem; font-size: .78rem; }
+    /* 100%는 FullCalendar가 행 높이를 맞추는 데 쓰므로 유지하고 하한만 올린다 */
+    .fc .fc-daygrid-day-frame { min-height: max(100%, 3.4em); }
+    .fc .fc-daygrid-event { padding: 1px 3px; margin-top: 2px; font-size: .8rem;
+                            min-height: 20px; line-height: 1.6; }
+    .fc .fc-daygrid-more-link { min-height: 20px; padding: 0 3px; font-size: .8rem; }
+    .fc .fc-timegrid-slot { height: 2.4em; }
+    .fc .fc-timegrid-slot-label-cushion,
+    .fc .fc-timegrid-axis-cushion { font-size: .7rem; padding: 0 .25rem; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>🐷 캘린더</h1>
-  <p>빈 칸을 클릭하거나 드래그해서 일정 추가 · 일정을 클릭하면 수정/삭제</p>
+  <p class="hint-pointer">빈 칸을 클릭하거나 드래그해서 일정 추가 · 일정을 클릭하면 수정/삭제</p>
+  <p class="hint-touch">빈 칸을 길게 눌러 일정 추가 · 일정을 탭하면 수정/삭제</p>
   <div class="who">
     <span><strong>{{ user.username }}</strong>님의 캘린더</span>
+    {# 경로를 박지 않고 URL 이름을 쓴다 — 메인(/cal/settings/)과 서브도메인(/settings/) 양쪽에서 맞아야 한다 #}
+    <a class="btn" href="{% url 'settings' %}">설정</a>
     <form method="post" action="{% url 'logout' %}">
       {% csrf_token %}
       <button type="submit">로그아웃</button>
@@ -119,18 +181,32 @@
     });
   }
 
+  // 화면 폭·입력 방식에 따라 뷰 옵션만 바꾼다. 툴바가 넘치는 문제는 CSS가 처리하므로
+  // 여기서 headerToolbar 구성을 줄이지는 않는다(데스크톱과 버튼 구성이 같다).
+  // 폭 판단은 처음 한 번만 한다 — 화면을 돌릴 때 보고 있던 뷰가 바뀌면 오히려 혼란스럽다.
+  const isNarrow = window.matchMedia('(max-width: 480px)').matches;
+
   const calendarEl = document.getElementById('calendar');
   const calendar = new FullCalendar.Calendar(calendarEl, {
     locale: 'ko',
     timeZone: 'Asia/Seoul',
-    initialView: 'dayGridMonth',
+    // 폰에서는 7칸 월 뷰가 너무 좁다 → 하루 뷰로 시작하고 월/주 버튼으로 넘어간다
+    initialView: isNarrow ? 'timeGridDay' : 'dayGridMonth',
     height: 'auto',
     nowIndicator: true,
     selectable: true,
     selectMirror: true,
     editable: true,
     eventResizableFromStart: true,
-    dayMaxEvents: 3,
+    dayMaxEvents: isNarrow ? 2 : 3,
+    // 폰의 하루 뷰는 30분 칸이면 24시간이 너무 길어진다. 1시간 칸으로 줄인다
+    slotDuration: isNarrow ? '01:00:00' : '00:30:00',
+    // 짧은 일정도 손가락으로 누를 수 있게 최소 높이를 키운다(기본 15px)
+    eventMinHeight: isNarrow ? 26 : 15,
+    // 길게 누르기 지연은 터치일 때만 쓰인다(마우스는 영향 없음).
+    // 기본 1초는 답답하고, 너무 짧으면 스크롤과 헷갈리므로 0.6초로 둔다
+    selectLongPressDelay: 600,
+    eventLongPressDelay: 600,
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',

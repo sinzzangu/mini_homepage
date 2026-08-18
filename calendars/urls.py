@@ -15,6 +15,7 @@ urlpatterns = [
     ),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("signup/", views.signup, name="signup"),
+    path("settings/", views.settings_page, name="settings"),
     path("api/events", views.events_collection, name="events-collection"),
     path("api/events/<int:pk>", views.event_detail, name="event-detail"),
 ]
